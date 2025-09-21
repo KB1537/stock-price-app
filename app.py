@@ -77,3 +77,7 @@ def prophet_forcast(df:pd.DataFrame, periods:int=90):
     m=Prophet(daily_seasonality=True)
     m.fit(df_prophet)
     future=m.make_future_dataframe(periods=periods, freq='B')
+    forcast=m.predict(future)
+    return forcast[['ds','yhat','yhat_lower','yhat_upper']]
+
+
