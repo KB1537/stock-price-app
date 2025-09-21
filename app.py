@@ -1,13 +1,13 @@
 import pandas as pd
 import streamlit as st
 import yfinance as yf
-import plotly.graph_objects as go 
+import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import io
 
-st.set_page_config(layout="wide",page_title="Multi stock dashboard")
+st.set_page_config(layout="wide", page_title="Multi stock dashboard")
 
-#optional imports
+# optional imports
 try:
     from prophet import Prophet
     PROPHET_AVAILABLE = True
@@ -20,23 +20,36 @@ try:
 except Exception:
     PANDAS_TA_AVAILABLE = False
 
-#app helpers
-st.cache_data(ttl=3600) #cache downloaded data for one hour 
+# app helpers
+st.cache_data(ttl=3600)  # cache downloaded data for one hour
 
-#downloads hsitorical data(Open,high,low,close,volume) and returns clean data with datetime index
-def fetch_ticker_data(ticker: str, start:str, end:str )-> pd.DataFrame:
-    df = yf.download (ticker, start=start, end=end, progress=False, auto_adjust=True)
+# downloads hsitorical data(Open,high,low,close,volume) and returns clean data with datetime index
+
+
+def fetch_ticker_data(ticker: str, start: str, end: str) -> pd.DataFrame:
+    df = yf.download(ticker, start=start, end=end,
+                     progress=False, auto_adjust=True)
     if df.empty:
         return pd.DataFrame()
-    df.index=pd.to_datetime(df.index)
-    df=df[['open','high','low','close','volumn']]
-    df=df.sort_index()
+    df.index = pd.to_datetime(df.index)
+    df = df[['open', 'high', 'low', 'close', 'volumn']]
+    df = df.sort_index()
     return df
 
 
-def moving_avg(df: pd.DataFrame, windows=[50,200]):
+def moving_avg(df: pd.DataFrame, windows=[50, 200]):
     for w in windows:
-        df[f"MA_{w}"]=df['close'].rolling(window=w).mean()
+        df[f"MA_{w}"] = df['close'].rolling(window=w).mean()
     return df
-    
 
+
+def plot_candlestick_with_mas(df: pd.DataFrame, ticker: str, ma_windows=[50, 200]):
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df['Open'],
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close'],
+        name=f"{ticker} OHLC"
+    ))
