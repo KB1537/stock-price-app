@@ -66,9 +66,14 @@ def simple_rolling_forecast(df: pd.DataFrame, periods: int = 30):
     """Naive forecast: extend the last value or use last-window mean (simple fallback)."""
     last_date = df.index.max()
     last_val = df['Close'].iloc[-1]
-    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1)periods=periods freq='B')
+    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1),periods=periods, freq='B') #B for business days
     # uses mean of last 30 closes and yhat
     yhat = [df['Close'].tail(30).mean()]*periods
     return pd.DataFrame({'ds': future_dates, 'yhat': yhat})
 
     
+def prophet_forcast(df:pd.DataFrame, periods:int=90):
+    df_prophet=df.reset_index().rename(columns={'index','ds','Close','y'})[['ds','y']]
+    m=Prophet(daily_seasonality=True)
+    m.fit(df_prophet)
+    future=m.make_future_dataframe(periods=periods, freq='B')
