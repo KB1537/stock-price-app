@@ -66,18 +66,45 @@ def simple_rolling_forecast(df: pd.DataFrame, periods: int = 30):
     """Naive forecast: extend the last value or use last-window mean (simple fallback)."""
     last_date = df.index.max()
     last_val = df['Close'].iloc[-1]
-    future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1),periods=periods, freq='B') #B for business days
+    future_dates = pd.date_range(
+        # B for business days
+        start=last_date + pd.Timedelta(days=1), periods=periods, freq='B')
     # uses mean of last 30 closes and yhat
     yhat = [df['Close'].tail(30).mean()]*periods
     return pd.DataFrame({'ds': future_dates, 'yhat': yhat})
 
-    
-def prophet_forcast(df:pd.DataFrame, periods:int=90):
-    df_prophet=df.reset_index().rename(columns={'index','ds','Close','y'})[['ds','y']]
-    m=Prophet(daily_seasonality=True)
+
+def prophet_forcast(df: pd.DataFrame, periods: int = 90):
+    df_prophet = df.reset_index().rename(
+        columns={'index', 'ds', 'Close', 'y'})[['ds', 'y']]
+    m = Prophet(daily_seasonality=True)
     m.fit(df_prophet)
-    future=m.make_future_dataframe(periods=periods, freq='B')
-    forcast=m.predict(future)
-    return forcast[['ds','yhat','yhat_lower','yhat_upper']]
+    future = m.make_future_dataframe(periods=periods, freq='B')
+    forcast = m.predict(future)
+    return forcast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
 
 
+# UI:sliders
+
+st.sidebar.header('Header')
+default_tickers = ['APPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA']
+tickers = st.sidebar.multiselect(
+    "Select ticker(multi)", options=default_tickers, default=['AAPL', 'MSFT'])
+
+start_default = datetime.today - timedelta(days=365)
+start_date = st.sidebar.date_input('start date', start_default)
+end_date = st.sidebar.date_input('end date', datetime.today())
+
+forecast_days = st.sidebar.slider(
+    "Forecast horizon (business days)", min_value=5, max_value=365, value=90)
+ma_windows = st.sidebar.multiselect("Show moving averages", options=[
+                                    20, 50, 100, 200], default=[50, 200])
+add_technical = st.sidebar.checkbox(
+    "Add technical indicators (pandas_ta)", value=False)
+download_all = st.sidebar.checkbox("Allow CSV download per ticker", value=True)
+
+st.sidebar.markdown("---")
+if PROPHET_AVAILABLE:
+    st.sidebar.success("Prophet available for forecasting")
+else:
+    st.sidebar.info("Prophet not installed — fallback forecast will be used")
