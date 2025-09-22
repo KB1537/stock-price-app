@@ -21,7 +21,7 @@ except Exception:
     PANDAS_TA_AVAILABLE = False
 
 # app helpers
-st.cache_data(ttl=3600)  # cache downloaded data for one hour
+@st.cache_data(ttl=3600)  # cache downloaded data for one hour
 
 # downloads hsitorical data(Open,high,low,close,volume) and returns clean data with datetime index
 
@@ -75,7 +75,7 @@ def simple_rolling_forecast(df: pd.DataFrame, periods: int = 30):
 
 
 def prophet_forcast(df: pd.DataFrame, periods: int = 90):
-    df_prophet = df.reset_index().rename(
+    df_prophet=df.reset_index().rename(
         columns={'index', 'ds', 'Close', 'y'})[['ds', 'y']]
     m = Prophet(daily_seasonality=True)
     m.fit(df_prophet)
@@ -108,3 +108,28 @@ if PROPHET_AVAILABLE:
     st.sidebar.success("Prophet available for forecasting")
 else:
     st.sidebar.info("Prophet not installed — fallback forecast will be used")
+
+
+#Main code for app
+st.title("Multi ticker stock analysis and forcasting")
+st.markdown("Select multiple tickers on the left, then scroll through each ticker's chart, indicators, and forecast.")
+
+if not tickers:
+    st.warning("Pick at least one ticker from the sidebar to begin.")
+    st.stop()
+
+#fetch data(one ticker at a time)
+
+data_dict={}
+with st.spinner("Downlading data"):
+    for t in tickers:
+        df=fetch_ticker_data(t, start_date.isoformat(), end_date.isoformat())
+        if df.empty:
+            st.error(f"No data found for {t}-check ticker symbol or date range.")
+        else:
+            df=moving_avg(df,ma_windows)
+            if add_technical and PANDAS_TA_AVAILABLE:
+                df['rsi_14']=pta.rsi(df['close'],lenght=14)
+                macd = pta.macd(df['close'])
+                df=pd.concat([df, macd],axis=1)
+            data_dict={t}=df
