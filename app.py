@@ -167,4 +167,21 @@ for t, df in data_dict.items():
 
 if download_all:
     csv=df.reset_index().to_csv(index=False).encode('utf-8')
-    
+    st.download_button(f"Dwonload{t} CSV",csv,file_name=f"{t}_History.csv",mime="text/csv")
+
+st.markdown("---")
+st.subheader("Forecast")
+if PROPHET_AVAILABLE:
+    with st.spinner(f"fitting prophet for {t}..."):
+        try:
+            fcst=prophet_forcast(df,periods=forecast_days)
+            fig2=go.Figure()
+            fig2.add_trace(go.scatter(x=fcst['df'],y=fcst['yhat'],name='yhat'))
+            fig2.add_trace(go.Scatter(x=fcst['ds'],y=fcst['yhat_upper'],name='upper',line=dict(width=0),showlegend=False))
+            fig2.add_trace(go.Scatter(x=fcst['ds'],y=fcst['yhat_lower'],name='lower',line=dict(width=0),fill='tonexty',fillcolor='rgba(0,100,80,0.1)',showlegend=False))
+            fig2.update_layout(title=f"{t} Prophet Forecast ({forecast_days} business days ahead)",height=400)
+            st.plotly_chart(fig2,use_container_width=True)
+            st.dataframe(fcst.tail(10).set_index('ds'))
+        except Exception as e:
+            st.error(f"Prophet failed for {t}:{e}")
+
