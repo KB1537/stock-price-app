@@ -129,7 +129,13 @@ with st.spinner("Downlading data"):
         else:
             df=moving_avg(df,ma_windows)
             if add_technical and PANDAS_TA_AVAILABLE:
-                df['rsi_14']=pta.rsi(df['close'],lenght=14)
-                macd = pta.macd(df['close'])
+                df['rsi_14']=pta.rsi(df['Close'],lenght=14)
+                macd = pta.macd(df['Close'])
                 df=pd.concat([df, macd],axis=1)
-            data_dict={t}=df
+            data_dict[t]=df
+
+
+# Summary table 
+summary+rows=[]
+for t, df in data_dict.items():
+    last_close=df['Close']
