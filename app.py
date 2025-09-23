@@ -24,8 +24,6 @@ except Exception:
 @st.cache_data(ttl=3600)  # cache downloaded data for one hour
 
 # downloads hsitorical data(Open,high,low,close,volume) and returns clean data with datetime index
-
-
 def fetch_ticker_data(ticker: str, start: str, end: str) -> pd.DataFrame:
     df = yf.download(ticker, start=start, end=end,
                      progress=False, auto_adjust=True)
@@ -85,7 +83,6 @@ def prophet_forcast(df: pd.DataFrame, periods: int = 90):
 
 
 # UI:sliders
-
 st.sidebar.header('Header')
 default_tickers = ['APPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA']
 tickers = st.sidebar.multiselect(
@@ -119,7 +116,6 @@ if not tickers:
     st.stop()
 
 #fetch data(one ticker at a time)
-
 data_dict={}
 with st.spinner("Downlading data"):
     for t in tickers:
@@ -163,8 +159,9 @@ for t, df in data_dict.items():
         st.write(f"Data Points:{len(df)}")
         if 'rsi_14' in df.columns:
             st.write(f"Latest RSI (14):{df['rsi_14'].iloc[-1]:2f}")
-#download
 
+
+#download
 if download_all:
     csv=df.reset_index().to_csv(index=False).encode('utf-8')
     st.download_button(f"Dwonload{t} CSV",csv,file_name=f"{t}_History.csv",mime="text/csv")
@@ -175,6 +172,7 @@ if PROPHET_AVAILABLE:
     with st.spinner(f"fitting prophet for {t}..."):
         try:
             fcst=prophet_forcast(df,periods=forecast_days)
+            #plot forcast
             fig2=go.Figure()
             fig2.add_trace(go.scatter(x=fcst['df'],y=fcst['yhat'],name='yhat'))
             fig2.add_trace(go.Scatter(x=fcst['ds'],y=fcst['yhat_upper'],name='upper',line=dict(width=0),showlegend=False))
@@ -185,3 +183,14 @@ if PROPHET_AVAILABLE:
         except Exception as e:
             st.error(f"Prophet failed for {t}:{e}")
 
+else:
+    with st.spinner("Using simple rollimg mean forcast(Prophet not installed)"):
+        fcst=simple_rolling_forecast(df, periods=forecast_days)
+        fig2=go.Figure()
+        fig2.add_trace(go.Scatter(x=df.index,y=df['Close'],name='historical'))
+        fig2.add_trace(go.Scatter(x=fcst['df'],y=fcst['yhat'],name='forecast',line=dict(dash='dash')))
+        fig2.update_layout(title=f"{t} Navie Forecast({forecast_days}) business days ahead)", height=400)
+        st.plotly_chart(fig2,use_container_width=True)
+        st.dataframe(fcst.set_index('ds').head(10))
+
+st.sidebar.markdown("**Tips:** for many tickers, consider fecthing data with 'yf.download(list_of_tickers)' for speed(yfinance supports batch downloads).")
