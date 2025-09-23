@@ -136,6 +136,35 @@ with st.spinner("Downlading data"):
 
 
 # Summary table 
-summary+rows=[]
+summary_rows=[]
 for t, df in data_dict.items():
-    last_close=df['Close']
+    last_close=df['Close'].iloc[-1]
+    first_close=df['Close'].iloc[0]
+    pct_change=(last_close/first_close-1)*100
+    vol=int(df['Volumn']).iloc[-1]
+    summary_rows.append({'Ticker': t,'last Close':round(last_close,2),'% Change (range)':round(pct_change,2), 'Last Volume': vol})
+if summary_rows:
+    summary_df=pd.DataFrame(summary_rows).set_index('Ticker')
+    st.subheader('snapshot')
+    st.table(summary_df)
+
+#Display each ticker as expanable section 
+for t, df in data_dict.items():
+    with st.expander(f"{t}-Chart and Forecast",expanded=False):
+     col1, col2=st.columns([2,1])
+     with col1:
+         st.subheader(f"{t}price")
+         fig=plot_candlestick_with_mas(df,t,ma_windows)
+         st.plotly_chart(fig,use_container_width=True)
+
+    with col2:
+        st.subheader('Details')
+        st.write(f"Latest Close: **{df['Close'].iloc[-1]:.2f}**")    
+        st.write(f"Data Points:{len(df)}")
+        if 'rsi_14' in df.columns:
+            st.write(f"Latest RSI (14):{df['rsi_14'].iloc[-1]:2f}")
+#download
+
+if download_all:
+    csv=df.reset_index().to_csv(index=False).encode('utf-8')
+    
