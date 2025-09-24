@@ -129,17 +129,37 @@ def simple_rolling_forecast(df: pd.DataFrame, periods: int = 30):
         start=last_date + pd.Timedelta(days=1), periods=periods, freq='B')
     # uses mean of last 30 closes and yhat
     yhat = [df['Close'].tail(30).mean()]*periods
-    return pd.DataFrame({'ds': future_dates, 'yhat': yhat})
+    return pd.DataFrame({"ds": future_dates, 'yhat': yhat})
 
 
-def prophet_forcast(df: pd.DataFrame, periods: int = 90):
-    df_prophet=df.reset_index().rename(
-        columns={'index', 'ds', 'Close', 'y'})[['ds', 'y']]
-    m = Prophet(daily_seasonality=True)
+
+
+def prophet_forecast(df: pd.DataFrame, periods: int = 90) -> pd.DataFrame:
+    from prophet import Prophet as ProphetModel
+
+    if df is None or df.empty:
+        raise ValueError("Input df is empty or None — cannot run Prophet.")
+
+    df = df.rename(columns=lambda c: str(c).strip().capitalize())
+
+    if "Close" not in df.columns:
+        raise ValueError(f"'Close' not found. Columns are: {df.columns.tolist()}")
+
+    df_prophet = df.reset_index()
+    first_col = df_prophet.columns[0]
+    df_prophet = df_prophet.rename(columns={first_col: "ds", "Close": "y"})
+    df_prophet = df_prophet[["ds", "y"]]
+    df_prophet["ds"]=pd.to_datetime(df_prophet["ds"])
+    df_prophet["y"]=df_prophet["y"].astype(float)   #forces float
+
+    m = ProphetModel(daily_seasonality=True)
     m.fit(df_prophet)
-    future = m.make_future_dataframe(periods=periods, freq='B')
-    forcast = m.predict(future)
-    return forcast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+
+    future = m.make_future_dataframe(periods=periods, freq="B")
+    forecast = m.predict(future)
+
+    return forecast[["ds", "yhat", "yhat_lower", "yhat_upper"]]
+
 
 
 # UI:sliders
@@ -168,7 +188,7 @@ else:
 
 
 #Main code for app
-st.title("Multi ticker stock analysis and forcasting")
+st.title("Multi ticker stock analysis and Forecasting")
 st.markdown("Select multiple tickers on the left, then scroll through each ticker's chart, indicators, and forecast.")
 
 if not tickers:
@@ -208,6 +228,8 @@ if summary_rows:
     st.table(summary_df)
 
 #Display each ticker as expanable section 
+import traceback
+
 for t, df in data_dict.items():
     with st.expander(f"{t}-Chart and Forecast",expanded=False):
      col1, col2=st.columns([2,1])
@@ -240,30 +262,42 @@ if download_all:
 
 st.markdown("---")
 st.subheader("Forecast")
+
 if PROPHET_AVAILABLE:
     with st.spinner(f"fitting prophet for {t}..."):
         try:
-            fcst=prophet_forcast(df,periods=forecast_days)
+            fcst=prophet_forecast(df.copy(),periods=forecast_days)
             #plot forcast
             fig2=go.Figure()
-            fig2.add_trace(go.scatter(x=fcst['df'],y=fcst['yhat'],name='yhat'))
+            fig2.add_trace(go.Scatter(x=fcst['ds'],y=fcst['yhat'],name='yhat'))
             fig2.add_trace(go.Scatter(x=fcst['ds'],y=fcst['yhat_upper'],name='upper',line=dict(width=0),showlegend=False))
             fig2.add_trace(go.Scatter(x=fcst['ds'],y=fcst['yhat_lower'],name='lower',line=dict(width=0),fill='tonexty',fillcolor='rgba(0,100,80,0.1)',showlegend=False))
             fig2.update_layout(title=f"{t} Prophet Forecast ({forecast_days} business days ahead)",height=400)
             st.plotly_chart(fig2,use_container_width=True)
-            st.dataframe(fcst.tail(10).set_index('ds'))
+            st.dataframe(fcst.tail(10).set_index("ds"))
         except Exception as e:
             st.error(f"Prophet failed for {t}:{e}")
+            st.text(traceback.format_exc())
+            st.info('using simple rolling forecast instead')
+            fcst=simple_rolling_forecast(df,periods=forecast_days)
+
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(x=df.index, y=df['Close'], name='historical'))
+            fig2.add_trace(go.Scatter(x=fcst['ds'], y=fcst['yhat'], name='forecast', line=dict(dash='dash')))
+            fig2.update_layout(title=f"{t} Naive Forecast ({forecast_days} business days ahead)", height=400)
+            st.plotly_chart(fig2, use_container_width=True)
+            st.dataframe(fcst.set_index('ds').head(10))
+
 
 else:
     with st.spinner("Using simple rollimg mean forcast(Prophet not installed)"):
         fcst=simple_rolling_forecast(df, periods=forecast_days)
         fig2=go.Figure()
         fig2.add_trace(go.Scatter(x=df.index,y=df['Close'],name='historical'))
-        fig2.add_trace(go.Scatter(x=fcst['df'],y=fcst['yhat'],name='forecast',line=dict(dash='dash')))
+        fig2.add_trace(go.Scatter(x=fcst['ds'],y=fcst['yhat'],name='forecast',line=dict(dash='dash')))
         fig2.update_layout(title=f"{t} Navie Forecast({forecast_days}) business days ahead)", height=400)
         st.plotly_chart(fig2,use_container_width=True)
-        st.dataframe(fcst.set_index('ds').head(10))
+        st.dataframe(fcst.set_index("ds").head(10))
 
 st.sidebar.markdown("**Tips:** for many tickers, consider fecthing data with 'yf.download(list_of_tickers)' for speed(yfinance supports batch downloads).")
 
