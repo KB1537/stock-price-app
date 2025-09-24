@@ -20,24 +20,84 @@ try:
 except Exception:
     PANDAS_TA_AVAILABLE = False
 
+
+
+
+def flatten_columns(cols):
+    
+    def elem_to_list(elem):
+        # Recursively convert nested tuple/list into list of strings
+        if isinstance(elem, (tuple, list)):
+            out = []
+            for e in elem:
+                out.extend(elem_to_list(e))
+            return out
+        else:
+            return [str(elem)]
+
+    flat = []
+    for col in cols:
+        if isinstance(col, (tuple, list)):
+            parts = [p for p in elem_to_list(col) if p not in [None,""]]
+            flat.append("_".join(parts))
+        else:
+            flat.append(str(col))
+    return flat
+
 # app helpers
 @st.cache_data(ttl=3600)  # cache downloaded data for one hour
 
 # downloads hsitorical data(Open,high,low,close,volume) and returns clean data with datetime index
 def fetch_ticker_data(ticker: str, start: str, end: str) -> pd.DataFrame:
-    df = yf.download(ticker, start=start, end=end,
-                     progress=False, auto_adjust=True)
+    df = yf.download(ticker, 
+                     start=start, 
+                     end=end,
+                     progress=False,
+                     auto_adjust=False)
     if df.empty:
         return pd.DataFrame()
+    
+#to handle Multiindex
+    if isinstance(df.columns,pd.MultiIndex):
+        if 'Ticker' in df.columns.names:
+            df.columns=df.columns.droplevel('Ticker')
+        else:
+            #flatten multiindex to string(fallback)
+           df.columns = ["_".join([str(c) for c in col if c]) for col in df.columns]
+
+
+
+#normalise column names
+    rename_map = {
+        "Open": "Open",
+        "High": "High",
+        "Low": "Low",
+        "Close": "Close",
+        "Adj Close": "Adj Close",
+        "Volume": "Volume",
+        # handle lowercase just in case
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "adjclose": "Adj Close",
+        "volume": "Volume",
+    }
+    df = df.rename(columns=rename_map)
+
+    #keep standard OHLCV if present 
+    keep_cols=[c for c in ['Open','High','Low','Close','Volume']if c in df.columns]
+    df=df[keep_cols]
+
     df.index = pd.to_datetime(df.index)
-    df = df[['Open', 'high', 'Low', 'Close', 'Volumn']]
+    df = df[['Open','High','Low','Close','Volume']]
     df = df.sort_index()
     return df
 
 
 def moving_avg(df: pd.DataFrame, windows=[50, 200]):
     for w in windows:
-        df[f"MA_{w}"] = df['close'].rolling(window=w).mean()
+        df[f"MA_{w}"] = df['Close'].rolling(window=w).mean()
     return df
 
 
@@ -86,9 +146,9 @@ def prophet_forcast(df: pd.DataFrame, periods: int = 90):
 st.sidebar.header('Header')
 default_tickers = ['APPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA']
 tickers = st.sidebar.multiselect(
-    "Select ticker(multi)", options=default_tickers, default=['AAPL', 'MSFT'])
+    "Select ticker(multi)", options=default_tickers, default=[t for t in['AAPL','MSFT'] if t in default_tickers])
 
-start_default = datetime.today - timedelta(days=365)
+start_default = datetime.today() - timedelta(days=365)
 start_date = st.sidebar.date_input('start date', start_default)
 end_date = st.sidebar.date_input('end date', datetime.today())
 
@@ -137,7 +197,10 @@ for t, df in data_dict.items():
     last_close=df['Close'].iloc[-1]
     first_close=df['Close'].iloc[0]
     pct_change=(last_close/first_close-1)*100
-    vol=int(df['Volumn']).iloc[-1]
+    vol=int(df['Volume'].iloc[-1])
+
+else:
+    vol=None
     summary_rows.append({'Ticker': t,'last Close':round(last_close,2),'% Change (range)':round(pct_change,2), 'Last Volume': vol})
 if summary_rows:
     summary_df=pd.DataFrame(summary_rows).set_index('Ticker')
@@ -152,7 +215,14 @@ for t, df in data_dict.items():
          st.subheader(f"{t}price")
          fig=plot_candlestick_with_mas(df,t,ma_windows)
          st.plotly_chart(fig,use_container_width=True)
-
+         if 'Volume' in df.columns:
+           vol_fig=go.Figure([go.Bar(x=df.index,y=df['Volume'],name='Volume')])
+           vol_fig.update_layout(height=200,margin=dict(t=10,b=10))
+           st.plotly_chart(vol_fig,use_container_width=True)
+         else:
+           st.info("No Volume data avaliable for this ticker")
+    
+     
     with col2:
         st.subheader('Details')
         st.write(f"Latest Close: **{df['Close'].iloc[-1]:.2f}**")    
@@ -164,7 +234,9 @@ for t, df in data_dict.items():
 #download
 if download_all:
     csv=df.reset_index().to_csv(index=False).encode('utf-8')
-    st.download_button(f"Dwonload{t} CSV",csv,file_name=f"{t}_History.csv",mime="text/csv")
+    st.download_button(f"Download {t} CSV",csv,file_name=f"{t}_History.csv",mime="text/csv")
+
+
 
 st.markdown("---")
 st.subheader("Forecast")
@@ -194,3 +266,5 @@ else:
         st.dataframe(fcst.set_index('ds').head(10))
 
 st.sidebar.markdown("**Tips:** for many tickers, consider fecthing data with 'yf.download(list_of_tickers)' for speed(yfinance supports batch downloads).")
+
+
