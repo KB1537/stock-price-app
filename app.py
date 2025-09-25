@@ -4,7 +4,8 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import io
-
+from io import StringIO
+import requests
 st.set_page_config(layout="wide", page_title="Multi stock dashboard")
 
 # optional imports
@@ -21,6 +22,20 @@ except Exception:
     PANDAS_TA_AVAILABLE = False
 
 
+# Load Nasdaq tickers
+@st.cache_data(ttl=86400)
+def load_nasdaq_tickers():
+    url = "https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt"
+    response = requests.get(url)
+    if response.status_code != 200:
+        st.error(f"Failed to download Nasdaq tickers: {response.status_code}")
+        return []
+    data = StringIO(response.text)
+    df = pd.read_csv(data, sep="|")
+    df = df[:-1]  # remove footer
+    return df['Symbol'].tolist()
+
+nasdaq_tickers = load_nasdaq_tickers()
 
 
 def flatten_columns(cols):
@@ -75,7 +90,7 @@ def fetch_ticker_data(ticker: str, start: str, end: str) -> pd.DataFrame:
         "Close": "Close",
         "Adj Close": "Adj Close",
         "Volume": "Volume",
-        # handle lowercase just in case
+        # handle lowercase
         "open": "Open",
         "high": "High",
         "low": "Low",
@@ -163,10 +178,12 @@ def prophet_forecast(df: pd.DataFrame, periods: int = 90) -> pd.DataFrame:
 
 
 # UI:sliders
-st.sidebar.header('Header')
-default_tickers = ['APPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA']
+# Text input for any ticker, comma-separated
+st.sidebar.header("Select tickers")
 tickers = st.sidebar.multiselect(
-    "Select ticker(multi)", options=default_tickers, default=[t for t in['AAPL','MSFT'] if t in default_tickers])
+    "Choose one or more Nasdaq tickers",
+    options=nasdaq_tickers,
+    default=["AAPL", "MSFT"])
 
 start_default = datetime.today() - timedelta(days=365)
 start_date = st.sidebar.date_input('start date', start_default)
@@ -214,14 +231,22 @@ with st.spinner("Downlading data"):
 # Summary table 
 summary_rows=[]
 for t, df in data_dict.items():
-    last_close=df['Close'].iloc[-1]
-    first_close=df['Close'].iloc[0]
-    pct_change=(last_close/first_close-1)*100
-    vol=int(df['Volume'].iloc[-1])
+    if not df.empty:
+     last_close=df['Close'].iloc[-1]
+     first_close=df['Close'].iloc[0]
+     pct_change=(last_close/first_close-1)*100
+     vol=int(df['Volume'].iloc[-1])
 
 else:
     vol=None
-    summary_rows.append({'Ticker': t,'last Close':round(last_close,2),'% Change (range)':round(pct_change,2), 'Last Volume': vol})
+    pct_change=None
+    last_close=None
+    summary_rows.append({
+        'Ticker': t,
+        'last Close': round(last_close, 2) if last_close is not None else None,
+        '% Change (range)': round(pct_change, 2) if pct_change is not None else None,
+        'Last Volume': vol
+    })
 if summary_rows:
     summary_df=pd.DataFrame(summary_rows).set_index('Ticker')
     st.subheader('snapshot')
