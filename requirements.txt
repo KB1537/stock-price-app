@@ -1,0 +1,12 @@
+yfinance
+pandas
+numpy
+matplotlib
+streamlit
+prophet
+pandas_ta
+request
+plotly.graph_objects
+io 
+StringIO
+datetime
